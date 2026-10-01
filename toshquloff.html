@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demonic Skeleton Monster</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #030305;
+            overflow: hidden;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 1;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .overlay h1 {
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            color: #ff003c;
+            text-shadow: 0 0 20px rgba(255, 0, 60, 0.8);
+        }
+
+        .stats {
+            margin-top: 5px;
+            font-size: 1rem;
+            color: #a0a5c0;
+        }
+
+        .stats span {
+            font-weight: bold;
+            color: #00f0ff;
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .btn-ctrl {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            border: 2px solid #ff003c;
+            background: rgba(15, 15, 25, 0.85);
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(255, 0, 60, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .btn-ctrl:hover {
+            background: #ff003c;
+            box-shadow: 0 0 25px rgba(255, 0, 60, 0.9);
+            transform: scale(1.1);
+        }
+
+        .btn-ctrl:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="overlay">
+        <h1>DEMONIC SKELETON</h1>
+        <div class="stats">
+            Odamcha: <span id="eatenCount">0</span> | Uzunlik: <span id="lengthCount">25</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-ctrl" id="btnShrink" title="Kichraytirish">-</button>
+        <button class="btn-ctrl" id="btnGrow" title="Uzaytirish">+</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const mouse = {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2
+        };
+
+        const headTarget = {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2
+        };
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouse.x = e.touches[0].clientX;
+                mouse.y = e.touches[0].clientY;
+            }
+        });
+
+        class SnakeSegment {
+            constructor(x, y, length) {
+                this.x = x;
+                this.y = y;
+                this.length = length;
+                this.angle = 0;
+            }
+
+            follow(targetX, targetY) {
+                const dx = targetX - this.x;
+                const dy = targetY - this.y;
+                this.angle = Math.atan2(dy, dx);
+                this.x = targetX - Math.cos(this.angle) * this.length;
+                this.y = targetY - Math.sin(this.angle) * this.length;
+            }
+        }
+
+        class Leg {
+            constructor(segmentRatio, side, offsetAngle, legLength) {
+                this.segmentRatio = segmentRatio; // Ratio orqali pozitsiya doim tanaga mutanosib bo'ladi
+                this.side = side;
+                this.offsetAngle = offsetAngle;
+                this.legLength = legLength;
+                
+                this.currentFootX = 0;
+                this.currentFootY = 0;
+                this.targetFootX = 0;
+                this.targetFootY = 0;
+                this.stepProgress = 1;
+                this.isStepping = false;
+            }
+
+            getSegmentIndex(snake) {
+                return Math.min(Math.floor(snake.length * this.segmentRatio), snake.length - 2);
+            }
+
+            update(snake) {
+                const idx = this.getSegmentIndex(snake);
+                const seg = snake[idx];
+                const baseAngle = seg.angle + (this.side * this.offsetAngle);
+
+                const idealX = seg.x + Math.cos(baseAngle) * this.legLength;
+                const idealY = seg.y + Math.sin(baseAngle) * this.legLength;
+
+                if (this.currentFootX === 0 && this.currentFootY === 0) {
+                    this.currentFootX = idealX;
+                    this.currentFootY = idealY;
+                }
+
+                const distToIdeal = Math.hypot(idealX - this.currentFootX, idealY - this.currentFootY);
+                if (distToIdeal > 60 && !this.isStepping) {
+                    this.targetFootX = idealX + Math.cos(seg.angle) * 35;
+                    this.targetFootY = idealY + Math.sin(seg.angle) * 35;
+                    this.stepProgress = 0;
+                    this.isStepping = true;
+                }
+
+                if (this.isStepping) {
+                    this.stepProgress += 0.15;
+                    if (this.stepProgress >= 1) {
+                        this.stepProgress = 1;
+                        this.isStepping = false;
+                    }
+                    this.currentFootX += (this.targetFootX - this.currentFootX) * 0.35;
+                    this.currentFootY += (this.targetFootY - this.currentFootY) * 0.35;
+                }
+            }
+
+            draw(snake) {
+                const idx = this.getSegmentIndex(snake);
+                const seg = snake[idx];
+                const hipX = seg.x;
+                const hipY = seg.y;
+
+                const dx = this.currentFootX - hipX;
+                const dy = this.currentFootY - hipY;
+                const dist = Math.hypot(dx, dy);
+
+                const l1 = this.legLength * 0.6;
+                const l2 = this.legLength * 0.6;
+
+                const angleToFoot = Math.atan2(dy, dx);
+                const cosAngle = (dist * dist + l1 * l1 - l2 * l2) / (2 * dist * l1);
+                const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+                const kneeAngleOffset = Math.acos(clampedCos) * this.side;
+
+                const kneeAngle = angleToFoot + kneeAngleOffset;
+                const kneeX = hipX + Math.cos(kneeAngle) * l1;
+                const kneeY = hipY + Math.sin(kneeAngle) * l1;
+
+                ctx.save();
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.fillStyle = '#ffffff';
+                ctx.lineWidth = 3;
+
+                ctx.beginPath();
+                ctx.moveTo(hipX, hipY);
+                ctx.lineTo(kneeX, kneeY);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(kneeX, kneeY);
+                ctx.lineTo(this.currentFootX, this.currentFootY);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(kneeX, kneeY, 4, 0, Math.PI * 2);
+                ctx.arc(this.currentFootX, this.currentFootY, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.lineWidth = 2;
+                for (let i = -1; i <= 1; i++) {
+                    const clawAngle = angleToFoot + (i * 0.35);
+                    ctx.beginPath();
+                    ctx.moveTo(this.currentFootX, this.currentFootY);
+                    ctx.lineTo(this.currentFootX + Math.cos(clawAngle) * 14, this.currentFootY + Math.sin(clawAngle) * 14);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        const segmentLength = 16;
+        const snake = [];
+        let initialLength = 25;
+
+        for (let i = 0; i < initialLength; i++) {
+            snake.push(new SnakeSegment(mouse.x, mouse.y, segmentLength));
+        }
+
+        // 4 TA UZUN OYOQ (Proportsional joylashuv: Oldilar ~0.2, Orqalar ~0.65)
+        const legs = [
+            new Leg(0.2, -1, Math.PI / 2.1, 90),
+            new Leg(0.2, 1, Math.PI / 2.1, 90),
+            new Leg(0.65, -1, Math.PI / 1.9, 95),
+            new Leg(0.65, 1, Math.PI / 1.9, 95)
+        ];
+
+        const human = {
+            x: Math.random() * (window.innerWidth - 100) + 50,
+            y: Math.random() * (window.innerHeight - 100) + 50
+        };
+
+        let eatenTotal = 0;
+
+        function respawnHuman() {
+            human.x = Math.random() * (window.innerWidth - 120) + 60;
+            human.y = Math.random() * (window.innerHeight - 120) + 60;
+        }
+
+        function shrinkMonster() {
+            if (snake.length > 8) {
+                snake.splice(snake.length - 3, 3);
+                document.getElementById('lengthCount').textContent = snake.length;
+            }
+        }
+
+        function growMonster() {
+            const lastSeg = snake[snake.length - 1];
+            for (let i = 0; i < 3; i++) {
+                snake.push(new SnakeSegment(lastSeg.x, lastSeg.y, segmentLength));
+            }
+            document.getElementById('lengthCount').textContent = snake.length;
+        }
+
+        document.getElementById('btnShrink').addEventListener('click', shrinkMonster);
+        document.getElementById('btnGrow').addEventListener('click', growMonster);
+
+        function drawHuman(x, y) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            ctx.shadowColor = '#00f0ff';
+            ctx.shadowBlur = 12;
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.arc(0, -12, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, -6);
+            ctx.lineTo(0, 8);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(-8, -2);
+            ctx.lineTo(8, -2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, 8);
+            ctx.lineTo(-6, 18);
+            ctx.moveTo(0, 8);
+            ctx.lineTo(6, 18);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // DAXSHATLI SKLET BASHARASI (Demon Horns + Double Fangs)
+        function drawScaryHead(x, y, angle) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            ctx.shadowColor = '#ff003c';
+            ctx.shadowBlur = 20;
+
+            // Shoxlar
+            ctx.fillStyle = '#e2e8f0';
+            ctx.strokeStyle = '#ff003c';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(-8, -12);
+            ctx.quadraticCurveTo(-18, -25, -28, -20);
+            ctx.quadraticCurveTo(-15, -10, -5, -8);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(-8, 12);
+            ctx.quadraticCurveTo(-18, 25, -28, 20);
+            ctx.quadraticCurveTo(-15, 10, -5, 8);
+            ctx.fill();
+            ctx.stroke();
+
+            // Kalla suyagi
+            ctx.beginPath();
+            ctx.moveTo(32, 0);
+            ctx.lineTo(16, -18);
+            ctx.lineTo(-14, -14);
+            ctx.lineTo(-14, 14);
+            ctx.lineTo(16, 18);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+
+            // Qop-qora ko'z chanoqlari va ichida yonuvchi qizil nurlar
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.ellipse(10, -8, 6, 4, Math.PI / 6, 0, Math.PI * 2);
+            ctx.ellipse(10, 8, 6, 4, -Math.PI / 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ff0000';
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(11, -8, 2.5, 0, Math.PI * 2);
+            ctx.arc(11, 8, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Dahashtli uzun qoziq tishlar
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            // Yuqori katta tishlar
+            ctx.moveTo(26, -13); ctx.lineTo(34, -10); ctx.lineTo(20, -4);
+            ctx.moveTo(26, 13);  ctx.lineTo(34, 10);  ctx.lineTo(20, 4);
+            // Ichki mayda tishlar
+            ctx.moveTo(28, -7);  ctx.lineTo(36, -3);  ctx.lineTo(22, 0);
+            ctx.moveTo(28, 7);   ctx.lineTo(36, 3);   ctx.lineTo(22, 0);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawBone(x, y, angle, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(-2, -size);
+            ctx.quadraticCurveTo(4, -size * 0.5, 0, 0);
+            ctx.quadraticCurveTo(4, size * 0.5, -2, size);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(-2, -size, 2, 0, Math.PI * 2);
+            ctx.arc(-2, size, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function checkCollisions() {
+            const headX = snake[0].x;
+            const headY = snake[0].y;
+
+            const distToHuman = Math.hypot(headX - human.x, headY - human.y);
+            if (distToHuman < 30) {
+                eatenTotal++;
+                document.getElementById('eatenCount').textContent = eatenTotal;
+                growMonster();
+                respawnHuman();
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            headTarget.x += (mouse.x - headTarget.x) * 0.05;
+            headTarget.y += (mouse.y - headTarget.y) * 0.05;
+
+            snake[0].follow(headTarget.x, headTarget.y);
+
+            for (let i = 1; i < snake.length; i++) {
+                snake[i].follow(snake[i - 1].x, snake[i - 1].y);
+            }
+
+            checkCollisions();
+
+            drawHuman(human.x, human.y);
+
+            legs.forEach(leg => leg.update(snake));
+            legs.forEach(leg => leg.draw(snake));
+
+            for (let i = snake.length - 1; i >= 1; i--) {
+                const size = Math.max(3, (1 - i / snake.length) * 24);
+                drawBone(snake[i].x, snake[i].y, snake[i].angle, size);
+            }
+
+            drawScaryHead(snake[0].x, snake[0].y, snake[0].angle);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

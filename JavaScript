@@ -1,0 +1,154 @@
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const mouse = {
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2
+};
+
+window.addEventListener('mousemove', (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+});
+
+window.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+        mouse.x = e.touches[0].clientX;
+        mouse.y = e.touches[0].clientY;
+    }
+});
+
+class SnakeSegment {
+    constructor(x, y, length) {
+        this.x = x;
+        this.y = y;
+        this.length = length;
+        this.angle = 0;
+    }
+
+    follow(targetX, targetY) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        this.angle = Math.atan2(dy, dx);
+        this.x = targetX - Math.cos(this.angle) * this.length;
+        this.y = targetY - Math.sin(this.angle) * this.length;
+    }
+}
+
+const numSegments = 35;
+const segmentLength = 16;
+const snake = [];
+
+for (let i = 0; i < numSegments; i++) {
+    snake.push(new SnakeSegment(mouse.x, mouse.y, segmentLength));
+}
+
+function drawSkeletonHead(x, y, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // Sklet boshi (Bosh suyak va ko'zlar)
+    ctx.fillStyle = '#e4e4e7';
+    ctx.strokeStyle = '#27272a';
+    ctx.lineWidth = 2;
+
+    // Bosh qismi
+    ctx.beginPath();
+    ctx.ellipse(4, 0, 18, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Ko'zlar (Qora o'yiqlar)
+    ctx.fillStyle = '#09090b';
+    ctx.beginPath();
+    ctx.arc(8, -5, 4, 0, Math.PI * 2);
+    ctx.arc(8, 5, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Jag' tishlari
+    ctx.strokeStyle = '#09090b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(16, -6);
+    ctx.lineTo(16, 6);
+    ctx.moveTo(12, -5);
+    ctx.lineTo(12, 5);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawSkeletonBone(x, y, angle, size, isTail = false) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    ctx.strokeStyle = '#e4e4e7';
+    ctx.fillStyle = '#e4e4e7';
+    ctx.lineWidth = 2;
+
+    // Umurtqa pog'onasi (markaziy bo'g'in)
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Qovurg'alar (yon suyaklar)
+    if (!isTail) {
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(0, size);
+        ctx.stroke();
+
+        // Qovurg'alar uchidagi suyak tugunlari
+        ctx.beginPath();
+        ctx.arc(0, -size, 2, 0, Math.PI * 2);
+        ctx.arc(0, size, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Birinchi segment mishiqa ergashadi
+    snake[0].follow(mouse.x, mouse.y);
+
+    // Qolgan segmentlar bir-biriga ergashadi
+    for (let i = 1; i < snake.length; i++) {
+        snake[i].follow(snake[i - 1].x, snake[i - 1].y);
+    }
+
+    // Umurtqa chizig'i
+    ctx.strokeStyle = '#71717a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(snake[0].x, snake[0].y);
+    for (let i = 1; i < snake.length; i++) {
+        ctx.lineTo(snake[i].x, snake[i].y);
+    }
+    ctx.stroke();
+
+    // Qovurg'a va suyaklarni chizish (orqadan oldinga)
+    for (let i = snake.length - 1; i >= 1; i--) {
+        const size = Math.max(3, (1 - i / snake.length) * 16);
+        const isTail = i > snake.length - 5;
+        drawSkeletonBone(snake[i].x, snake[i].y, snake[i].angle, size, isTail);
+    }
+
+    // Sklet boshini chizish
+    drawSkeletonHead(snake[0].x, snake[0].y, snake[0].angle);
+
+    requestAnimationFrame(animate);
+}
+
+animate();
